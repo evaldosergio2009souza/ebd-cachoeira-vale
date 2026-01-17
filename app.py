@@ -1,14 +1,41 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # =====================================
 # CONFIGURAÇÃO DA PÁGINA
 # =====================================
 st.set_page_config(page_title="EBD Digital - Regional", layout="wide")
 
-# Conexão com Banco de Dados
+# --- SISTEMA DE ACESSO (PROTEÇÃO DE DADOS) ---
+def verificar_senha():
+    """Retorna True se o usuário inseriu a senha correta."""
+    if "autenticado" not in st.session_state:
+        st.session_state["autenticado"] = False
+
+    if not st.session_state["autenticado"]:
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col2:
+            st.markdown("### 🔐 Acesso Restrito")
+            senha = st.text_input("Digite a senha da Regional:", type="password")
+            if st.button("Entrar"):
+                # Você pode alterar a senha 'EBD2026' para a que desejar
+                if senha == "EBD2026": 
+                    st.session_state["autenticado"] = True
+                    st.rerun()
+                else:
+                    st.error("Senha incorreta! Entre em contato com Evaldo Sérgio.")
+        return False
+    return True
+
+# Se não estiver autenticado, o script para aqui
+if not verificar_senha():
+    st.stop()
+
+# =====================================
+# BANCO DE DADOS E LÓGICA
+# =====================================
 def criar_conexao():
     conn = sqlite3.connect("chamada_escola_dominical.db", check_same_thread=False)
     return conn
@@ -16,7 +43,7 @@ def criar_conexao():
 conn = criar_conexao()
 cursor = conn.cursor()
 
-# Inicialização das Tabelas
+# Garantir que as tabelas existam
 cursor.execute("CREATE TABLE IF NOT EXISTS classes (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE NOT NULL)")
 cursor.execute("CREATE TABLE IF NOT EXISTS alunos (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL, classe TEXT NOT NULL)")
 cursor.execute("""
@@ -28,19 +55,15 @@ CREATE TABLE IF NOT EXISTS presencas (
 conn.commit()
 
 # =====================================
-# NOVO CABEÇALHO (IMAGEM PEQUENA E CENTRALIZADA)
+# CABEÇALHO CENTRALIZADO
 # =====================================
-# Criamos 3 colunas para centralizar a imagem e deixá-la pequena
 col_esq, col_centro, col_dir = st.columns([1, 1, 1])
-
-with col_centro: # A imagem entra na coluna do meio
+with col_centro:
     try:
-        # width=200 deixa a imagem bem pequena, cerca de 1/3 da largura central
-        st.image("igreja.png", width=200) 
+        st.image("igreja.png", width=200)
     except:
-        st.write("⛪ [Logo da Igreja]")
+        st.write("⛪ **EBD Regional**")
 
-# Faixa Azul com informações dos Pastores
 st.markdown(f"""
     <div style="text-align: center; background-color: #2c3e50; padding: 15px; border-radius: 10px; color: white; margin-bottom: 20px;">
         <h1 style='margin: 0; font-size: 22px;'>Igreja Evangélica Assembleia de Deus</h1>
@@ -52,90 +75,84 @@ st.markdown(f"""
     """, unsafe_allow_html=True)
 
 # =====================================
-# MENU LATERAL E FUNÇÕES
+# MENU E NAVEGAÇÃO
 # =====================================
-st.sidebar.title("Navegação")
-opcao = st.sidebar.radio("Selecione uma função:", 
-                         ["Fazer Chamada", "Cadastrar Alunos", "Gerenciar Classes", "Relatórios e Prêmios"])
+st.sidebar.title("Menu Principal")
+opcao = st.sidebar.radio("Selecione:", ["Fazer Chamada", "Ranking e Prêmios", "Cadastrar Alunos", "Gerenciar Classes"])
 
 if opcao == "Gerenciar Classes":
     st.header("🏫 Gestão de Classes")
     nova_classe = st.text_input("Nome da nova classe")
-    if st.button("Salvar Classe"):
+    if st.button("Salvar"):
         if nova_classe:
             try:
                 cursor.execute("INSERT INTO classes (nome) VALUES (?)", (nova_classe.strip(),))
                 conn.commit()
-                st.success("Classe cadastrada!")
-            except:
-                st.error("Erro: Classe já existe.")
+                st.success("Classe registrada!")
+            except: st.error("Erro: Classe já existe.")
 
 elif opcao == "Cadastrar Alunos":
     st.header("👥 Cadastro de Alunos")
     cursor.execute("SELECT nome FROM classes ORDER BY nome")
-    lista_classes = [c[0] for c in cursor.fetchall()]
+    classes = [c[0] for c in cursor.fetchall()]
     
-    if not lista_classes:
-        st.warning("Cadastre uma classe primeiro!")
+    if not classes: st.warning("Cadastre uma classe primeiro!")
     else:
-        aba_ind, aba_bloco = st.tabs(["Individual", "Em Bloco"])
-        with aba_ind:
-            nome_aluno = st.text_input("Nome do Aluno")
-            classe_aluno = st.selectbox("Classe", lista_classes, key="ind")
+        aba1, aba2 = st.tabs(["Individual", "Lista em Bloco"])
+        with aba1:
+            n_aluno = st.text_input("Nome do Aluno")
+            c_aluno = st.selectbox("Classe", classes, key="i")
             if st.button("Salvar Aluno"):
-                cursor.execute("INSERT INTO alunos (nome, classe) VALUES (?, ?)", (nome_aluno.strip(), classe_aluno))
+                cursor.execute("INSERT INTO alunos (nome, classe) VALUES (?, ?)", (n_aluno.strip(), c_aluno))
                 conn.commit()
-                st.success("Aluno cadastrado!")
-        with aba_bloco:
-            classe_bloco = st.selectbox("Classe", lista_classes, key="blc")
-            texto_nomes = st.text_area("Cole os nomes abaixo (um por linha)")
-            if st.button("Importar Lista"):
-                nomes = texto_nomes.split('\n')
-                for n in nomes:
-                    if n.strip():
-                        cursor.execute("INSERT INTO alunos (nome, classe) VALUES (?, ?)", (n.strip(), classe_bloco))
+                st.success("Cadastrado!")
+        with aba2:
+            c_bloco = st.selectbox("Classe", classes, key="b")
+            txt_nomes = st.text_area("Cole a lista (um por linha)")
+            if st.button("Importar"):
+                for n in txt_nomes.split('\n'):
+                    if n.strip(): cursor.execute("INSERT INTO alunos (nome, classe) VALUES (?, ?)", (n.strip(), c_bloco))
                 conn.commit()
-                st.success("Lista importada!")
+                st.success("Lista Importada!")
 
 elif opcao == "Fazer Chamada":
-    st.header("📝 Chamada do Dia")
+    st.header("📝 Chamada")
     cursor.execute("SELECT nome FROM classes ORDER BY nome")
-    lista_classes = [c[0] for c in cursor.fetchall()]
-    classe_chamada = st.selectbox("Escolha a Classe", lista_classes)
-    data_chamada = st.date_input("Data da Aula", datetime.now())
-    data_str = data_chamada.strftime("%d/%m/%Y")
-
-    if classe_chamada:
-        cursor.execute("SELECT id, nome FROM alunos WHERE classe = ? ORDER BY nome", (classe_chamada,))
+    classes = [c[0] for c in cursor.fetchall()]
+    cl_sel = st.selectbox("Classe", classes)
+    dt_sel = st.date_input("Data", datetime.now())
+    
+    if cl_sel:
+        cursor.execute("SELECT id, nome FROM alunos WHERE classe = ? ORDER BY nome", (cl_sel,))
         alunos = cursor.fetchall()
-        for id_aluno, nome in alunos:
+        for id_a, nome in alunos:
             c1, c2 = st.columns([3, 1])
             c1.write(nome)
-            if c2.button("Presença ✅", key=f"btn_{id_aluno}"):
+            if c2.button("Presente", key=f"p_{id_a}"):
                 cursor.execute("INSERT INTO presencas (aluno_id, data_chamada, presente) VALUES (?, ?, ?)", 
-                               (id_aluno, data_str, 1))
+                               (id_a, dt_sel.strftime("%d/%m/%Y"), 1))
                 conn.commit()
-                st.toast(f"Ok: {nome}")
+                st.toast(f"Presença: {nome}")
 
-elif opcao == "Relatórios e Prêmios":
-    st.header("🏆 Ranking e Resultados")
-    data_rank = st.date_input("Data para Ranking", datetime.now())
-    if st.button("Ver Ganhador do Dia"):
+elif opcao == "Ranking e Prêmios":
+    st.header("🏆 Ranking do Dia")
+    dt_r = st.date_input("Selecione o Domingo", datetime.now())
+    if st.button("Ver Ganhador"):
         cursor.execute("SELECT nome FROM classes")
-        classes = [c[0] for c in cursor.fetchall()]
+        cls = [c[0] for c in cursor.fetchall()]
         res = []
-        for cl in classes:
-            cursor.execute("SELECT id FROM alunos WHERE classe = ?", (cl,))
-            total = len(cursor.fetchall())
-            if total > 0:
-                cursor.execute("SELECT SUM(presente) FROM presencas JOIN alunos ON presencas.aluno_id = alunos.id WHERE alunos.classe = ? AND data_chamada = ?", (cl, data_rank.strftime("%d/%m/%Y")))
-                pres = cursor.fetchone()[0] or 0
-                res.append({"Classe": cl, "%": round((pres/total)*100, 1)})
+        for c in cls:
+            cursor.execute("SELECT id FROM alunos WHERE classe = ?", (c,))
+            tot = len(cursor.fetchall())
+            if tot > 0:
+                cursor.execute("SELECT SUM(presente) FROM presencas JOIN alunos ON presencas.aluno_id = alunos.id WHERE alunos.classe = ? AND data_chamada = ?", (c, dt_r.strftime("%d/%m/%Y")))
+                pre = cursor.fetchone()[0] or 0
+                res.append({"Classe": c, "Freq %": round((pre/tot)*100, 1)})
         if res:
-            df = pd.DataFrame(res).sort_values(by="%", ascending=False)
+            df = pd.DataFrame(res).sort_values(by="Freq %", ascending=False)
             st.table(df)
             st.balloons()
-            st.success(f"Ganhadora: {df.iloc[0]['Classe']}")
+            st.success(f"🥇 Vencedora: {df.iloc[0]['Classe']}")
 
 st.sidebar.markdown("---")
-st.sidebar.info(f"**Dev:** Evaldo Sérgio\n\n**Regional:** Cachoeira do Vale")
+st.sidebar.info(f"Dev: Evaldo Sérgio\nRegional Cachoeira do Vale")
