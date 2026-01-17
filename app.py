@@ -8,9 +8,9 @@ from datetime import datetime
 # =====================================
 st.set_page_config(page_title="EBD Digital - Regional", layout="wide")
 
-# --- SISTEMA DE ACESSO (PROTEÇÃO DE DADOS) ---
+# --- SISTEMA DE ACESSO PROFISSIONAL (OPÇÃO 2 - SECRETS) ---
 def verificar_senha():
-    """Retorna True se o usuário inseriu a senha correta."""
+    """Retorna True se o usuário inseriu a senha correta configurada nos Secrets."""
     if "autenticado" not in st.session_state:
         st.session_state["autenticado"] = False
 
@@ -18,32 +18,39 @@ def verificar_senha():
         col1, col2, col3 = st.columns([1, 1, 1])
         with col2:
             st.markdown("### 🔐 Acesso Restrito")
-            senha = st.text_input("Digite a senha da Regional:", type="password")
+            st.info("Sistema da Regional Cachoeira do Vale")
+            senha_digitada = st.text_input("Digite a senha de acesso:", type="password")
+            
             if st.button("Entrar"):
-                # Você pode alterar a senha 'EBD2026' para a que desejar
-                if senha == "EBD2026": 
-                    st.session_state["autenticado"] = True
-                    st.rerun()
-                else:
-                    st.error("Senha incorreta! Entre em contato com Evaldo Sérgio.")
+                try:
+                    # Busca a senha definida no painel 'Secrets' do Streamlit
+                    if senha_digitada == st.secrets["senha_geral"]:
+                        st.session_state["autenticado"] = True
+                        st.rerun()
+                    else:
+                        st.error("Senha incorreta! Procure o Coordenador Evaldo Sérgio.")
+                except KeyError:
+                    st.error("Erro Crítico: A senha não foi configurada no painel Secrets do Streamlit.")
+                    st.warning("Vá em Settings > Secrets e adicione: senha_geral = 'suasenha'")
         return False
     return True
 
-# Se não estiver autenticado, o script para aqui
+# Bloqueia o restante do código se não estiver autenticado
 if not verificar_senha():
     st.stop()
 
 # =====================================
-# BANCO DE DADOS E LÓGICA
+# BANCO DE DADOS
 # =====================================
 def criar_conexao():
+    # Conecta ao arquivo de banco de dados que você enviou ao GitHub
     conn = sqlite3.connect("chamada_escola_dominical.db", check_same_thread=False)
     return conn
 
 conn = criar_conexao()
 cursor = conn.cursor()
 
-# Garantir que as tabelas existam
+# Garantir estrutura básica das tabelas
 cursor.execute("CREATE TABLE IF NOT EXISTS classes (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE NOT NULL)")
 cursor.execute("CREATE TABLE IF NOT EXISTS alunos (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL, classe TEXT NOT NULL)")
 cursor.execute("""
@@ -55,14 +62,15 @@ CREATE TABLE IF NOT EXISTS presencas (
 conn.commit()
 
 # =====================================
-# CABEÇALHO CENTRALIZADO
+# CABEÇALHO (IMAGEM CENTRALIZADA)
 # =====================================
 col_esq, col_centro, col_dir = st.columns([1, 1, 1])
 with col_centro:
     try:
+        # Tenta carregar sua imagem igreja.png (tamanho 1/3)
         st.image("igreja.png", width=200)
     except:
-        st.write("⛪ **EBD Regional**")
+        st.write("⛪ **EBD DIGITAL**")
 
 st.markdown(f"""
     <div style="text-align: center; background-color: #2c3e50; padding: 15px; border-radius: 10px; color: white; margin-bottom: 20px;">
@@ -75,84 +83,106 @@ st.markdown(f"""
     """, unsafe_allow_html=True)
 
 # =====================================
-# MENU E NAVEGAÇÃO
+# NAVEGAÇÃO LATERAL
 # =====================================
-st.sidebar.title("Menu Principal")
-opcao = st.sidebar.radio("Selecione:", ["Fazer Chamada", "Ranking e Prêmios", "Cadastrar Alunos", "Gerenciar Classes"])
+st.sidebar.title("Painel de Controle")
+opcao = st.sidebar.radio("Navegação:", 
+                         ["Fazer Chamada", "Ranking e Prêmios", "Cadastrar Alunos", "Gerenciar Classes"])
 
-if opcao == "Gerenciar Classes":
-    st.header("🏫 Gestão de Classes")
-    nova_classe = st.text_input("Nome da nova classe")
-    if st.button("Salvar"):
-        if nova_classe:
-            try:
-                cursor.execute("INSERT INTO classes (nome) VALUES (?)", (nova_classe.strip(),))
-                conn.commit()
-                st.success("Classe registrada!")
-            except: st.error("Erro: Classe já existe.")
-
-elif opcao == "Cadastrar Alunos":
-    st.header("👥 Cadastro de Alunos")
+# --- FUNÇÃO: CHAMADA ---
+if opcao == "Fazer Chamada":
+    st.header("📝 Chamada do Dia")
     cursor.execute("SELECT nome FROM classes ORDER BY nome")
     classes = [c[0] for c in cursor.fetchall()]
     
-    if not classes: st.warning("Cadastre uma classe primeiro!")
+    if not classes:
+        st.info("Cadastre uma classe primeiro no menu lateral.")
     else:
-        aba1, aba2 = st.tabs(["Individual", "Lista em Bloco"])
-        with aba1:
-            n_aluno = st.text_input("Nome do Aluno")
-            c_aluno = st.selectbox("Classe", classes, key="i")
-            if st.button("Salvar Aluno"):
-                cursor.execute("INSERT INTO alunos (nome, classe) VALUES (?, ?)", (n_aluno.strip(), c_aluno))
-                conn.commit()
-                st.success("Cadastrado!")
-        with aba2:
-            c_bloco = st.selectbox("Classe", classes, key="b")
-            txt_nomes = st.text_area("Cole a lista (um por linha)")
-            if st.button("Importar"):
-                for n in txt_nomes.split('\n'):
-                    if n.strip(): cursor.execute("INSERT INTO alunos (nome, classe) VALUES (?, ?)", (n.strip(), c_bloco))
-                conn.commit()
-                st.success("Lista Importada!")
-
-elif opcao == "Fazer Chamada":
-    st.header("📝 Chamada")
-    cursor.execute("SELECT nome FROM classes ORDER BY nome")
-    classes = [c[0] for c in cursor.fetchall()]
-    cl_sel = st.selectbox("Classe", classes)
-    dt_sel = st.date_input("Data", datetime.now())
-    
-    if cl_sel:
+        cl_sel = st.selectbox("Selecione a Classe", classes)
+        dt_sel = st.date_input("Data da Aula", datetime.now())
+        
         cursor.execute("SELECT id, nome FROM alunos WHERE classe = ? ORDER BY nome", (cl_sel,))
         alunos = cursor.fetchall()
+        
         for id_a, nome in alunos:
             c1, c2 = st.columns([3, 1])
-            c1.write(nome)
-            if c2.button("Presente", key=f"p_{id_a}"):
+            c1.write(f"👤 {nome}")
+            if c2.button("Presente ✅", key=f"p_{id_a}"):
                 cursor.execute("INSERT INTO presencas (aluno_id, data_chamada, presente) VALUES (?, ?, ?)", 
                                (id_a, dt_sel.strftime("%d/%m/%Y"), 1))
                 conn.commit()
-                st.toast(f"Presença: {nome}")
+                st.toast(f"Presença confirmada: {nome}")
 
+# --- FUNÇÃO: RANKING ---
 elif opcao == "Ranking e Prêmios":
-    st.header("🏆 Ranking do Dia")
-    dt_r = st.date_input("Selecione o Domingo", datetime.now())
-    if st.button("Ver Ganhador"):
+    st.header("🏆 Ranking de Frequência")
+    dt_r = st.date_input("Data do Domingo", datetime.now())
+    
+    if st.button("Calcular Vencedor"):
         cursor.execute("SELECT nome FROM classes")
-        cls = [c[0] for c in cursor.fetchall()]
-        res = []
-        for c in cls:
+        todas_classes = [c[0] for c in cursor.fetchall()]
+        ranking = []
+        
+        for c in todas_classes:
             cursor.execute("SELECT id FROM alunos WHERE classe = ?", (c,))
-            tot = len(cursor.fetchall())
-            if tot > 0:
-                cursor.execute("SELECT SUM(presente) FROM presencas JOIN alunos ON presencas.aluno_id = alunos.id WHERE alunos.classe = ? AND data_chamada = ?", (c, dt_r.strftime("%d/%m/%Y")))
-                pre = cursor.fetchone()[0] or 0
-                res.append({"Classe": c, "Freq %": round((pre/tot)*100, 1)})
-        if res:
-            df = pd.DataFrame(res).sort_values(by="Freq %", ascending=False)
+            total_inscritos = len(cursor.fetchall())
+            
+            if total_inscritos > 0:
+                cursor.execute("""
+                    SELECT SUM(presente) FROM presencas 
+                    JOIN alunos ON presencas.aluno_id = alunos.id 
+                    WHERE alunos.classe = ? AND data_chamada = ?""", (c, dt_r.strftime("%d/%m/%Y")))
+                total_presentes = cursor.fetchone()[0] or 0
+                perc = (total_presentes / total_inscritos) * 100
+                ranking.append({"Classe": c, "Presentes": total_presentes, "Total": total_inscritos, "%": round(perc, 1)})
+        
+        if ranking:
+            df = pd.DataFrame(ranking).sort_values(by="%", ascending=False)
             st.table(df)
             st.balloons()
-            st.success(f"🥇 Vencedora: {df.iloc[0]['Classe']}")
+            st.success(f"⭐ A classe vencedora é: {df.iloc[0]['Classe']}")
+        else:
+            st.warning("Nenhuma chamada realizada nesta data.")
 
+# --- FUNÇÃO: CADASTROS ---
+elif opcao == "Cadastrar Alunos":
+    st.header("👥 Cadastro de Alunos")
+    cursor.execute("SELECT nome FROM classes ORDER BY nome")
+    classes_disp = [c[0] for c in cursor.fetchall()]
+    
+    aba1, aba2 = st.tabs(["Individual", "Em Bloco (WhatsApp/Excel)"])
+    
+    with aba1:
+        nome_novo = st.text_input("Nome Completo")
+        classe_nova = st.selectbox("Classe", classes_disp, key="cad_ind")
+        if st.button("Salvar Aluno"):
+            if nome_novo:
+                cursor.execute("INSERT INTO alunos (nome, classe) VALUES (?, ?)", (nome_novo.strip(), classe_nova))
+                conn.commit()
+                st.success("Aluno cadastrado!")
+    
+    with aba2:
+        classe_lista = st.selectbox("Classe para a lista", classes_disp, key="cad_blc")
+        area_texto = st.text_area("Cole os nomes (um por linha)")
+        if st.button("Importar Lista Agora"):
+            nomes = area_texto.split('\n')
+            for n in nomes:
+                if n.strip():
+                    cursor.execute("INSERT INTO alunos (nome, classe) VALUES (?, ?)", (n.strip(), classe_lista))
+            conn.commit()
+            st.success("Lista processada com sucesso!")
+
+elif opcao == "Gerenciar Classes":
+    st.header("🏫 Gestão de Classes")
+    n_cl = st.text_input("Nome da nova classe")
+    if st.button("Adicionar Classe"):
+        try:
+            cursor.execute("INSERT INTO classes (nome) VALUES (?)", (n_cl.strip(),))
+            conn.commit()
+            st.success("Classe criada!")
+        except:
+            st.error("Esta classe já existe.")
+
+# Rodapé
 st.sidebar.markdown("---")
-st.sidebar.info(f"Dev: Evaldo Sérgio\nRegional Cachoeira do Vale")
+st.sidebar.info(f"**Desenvolvedor:**\nEvaldo Sérgio\n\n**Regional:**\nCachoeira do Vale")
