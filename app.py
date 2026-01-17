@@ -8,9 +8,9 @@ from datetime import datetime
 # =====================================
 st.set_page_config(page_title="EBD Digital - Regional", layout="wide")
 
-# --- SISTEMA DE ACESSO PROFISSIONAL (OPÇÃO 2 - SECRETS) ---
+# --- SISTEMA DE ACESSO (SENHA DIRETA NO CÓDIGO) ---
 def verificar_senha():
-    """Retorna True se o usuário inseriu a senha correta configurada nos Secrets."""
+    """Retorna True se o usuário inserir a senha correta."""
     if "autenticado" not in st.session_state:
         st.session_state["autenticado"] = False
 
@@ -19,19 +19,17 @@ def verificar_senha():
         with col2:
             st.markdown("### 🔐 Acesso Restrito")
             st.info("Sistema da Regional Cachoeira do Vale")
+            # Para mudar a senha no futuro, basta alterar o texto entre as aspas abaixo
+            senha_correta = "EBD2026" 
+            
             senha_digitada = st.text_input("Digite a senha de acesso:", type="password")
             
             if st.button("Entrar"):
-                try:
-                    # Busca a senha definida no painel 'Secrets' do Streamlit
-                    if senha_digitada == st.secrets["senha_geral"]:
-                        st.session_state["autenticado"] = True
-                        st.rerun()
-                    else:
-                        st.error("Senha incorreta! Procure o Coordenador Evaldo Sérgio.")
-                except KeyError:
-                    st.error("Erro Crítico: A senha não foi configurada no painel Secrets do Streamlit.")
-                    st.warning("Vá em Settings > Secrets e adicione: senha_geral = 'suasenha'")
+                if senha_digitada == senha_correta:
+                    st.session_state["autenticado"] = True
+                    st.rerun()
+                else:
+                    st.error("Senha incorreta! Procure o Coordenador Evaldo Sérgio.")
         return False
     return True
 
@@ -43,7 +41,7 @@ if not verificar_senha():
 # BANCO DE DADOS
 # =====================================
 def criar_conexao():
-    # Conecta ao arquivo de banco de dados que você enviou ao GitHub
+    # Conecta ao arquivo de banco de dados no mesmo diretório
     conn = sqlite3.connect("chamada_escola_dominical.db", check_same_thread=False)
     return conn
 
@@ -176,12 +174,13 @@ elif opcao == "Gerenciar Classes":
     st.header("🏫 Gestão de Classes")
     n_cl = st.text_input("Nome da nova classe")
     if st.button("Adicionar Classe"):
-        try:
-            cursor.execute("INSERT INTO classes (nome) VALUES (?)", (n_cl.strip(),))
-            conn.commit()
-            st.success("Classe criada!")
-        except:
-            st.error("Esta classe já existe.")
+        if n_cl:
+            try:
+                cursor.execute("INSERT INTO classes (nome) VALUES (?)", (n_cl.strip(),))
+                conn.commit()
+                st.success("Classe criada!")
+            except:
+                st.error("Esta classe já existe.")
 
 # Rodapé
 st.sidebar.markdown("---")
